@@ -1566,7 +1566,7 @@ const AprovarComprasPage = ({ theme, onStatusUpdate }: { theme: 'light' | 'dark'
                 title="Reprovar solicitação"
                 confirmText="Confirmar Reprovação"
             >
-                <p>Por favor, forneÃ§a uma justificativa para a reprovação (opcional). Ela será visí­vel para o solicitante.</p>
+                <p>Por favor, forneça uma justificativa para a reprovação (opcional). Ela será visí­vel para o solicitante.</p>
                 <textarea
                     value={justification}
                     onChange={(e) => setJustification(e.target.value)}
