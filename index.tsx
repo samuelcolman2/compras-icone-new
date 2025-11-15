@@ -934,8 +934,8 @@ const Auth: React.FC<AuthProps> = ({ onLoginSuccess, theme, toggleTheme }) => {
     const getButtonText = () => {
         switch (view) {
             case 'login': return 'Entrar';
-            case 'signup': return signupStep === 'name' ? 'AvanÃ§ar' : 'Cadastrar';
-            case 'forgot': return 'Enviar CÃ³digo de RedefiniÃ§Ã£o';
+            case 'signup': return signupStep === 'name' ? 'Avançar' : 'Cadastrar';
+            case 'forgot': return 'Enviar Código de redefinição';
             case 'reset': return 'Redefinir Senha';
             case 'verify': return 'Verificar e Ativar Conta';
         }
