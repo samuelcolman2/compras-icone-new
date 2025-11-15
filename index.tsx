@@ -889,7 +889,7 @@ const Auth: React.FC<AuthProps> = ({ onLoginSuccess, theme, toggleTheme }) => {
                 return (
                     <>
                         <p className={`text-sm text-center ${mutedTextColor}`}>Um código foi enviado para <strong>{email}</strong>. Insira-o abaixo para ativar sua conta.</p>
-                        <input type="text" placeholder="código de 6 dÃ­gitos" value={code} onChange={e => setCode(e.target.value)} required className={`w-full px-3 py-3 ${inputBg} border ${inputBorder} ${inputTextColor} rounded-lg focus:outline-none focus:ring-1 focus:ring-blue-500 transition-colors text-center tracking-[0.3em]`} />
+                        <input type="text" placeholder="código de 6 dígitos" value={code} onChange={e => setCode(e.target.value)} required className={`w-full px-3 py-3 ${inputBg} border ${inputBorder} ${inputTextColor} rounded-lg focus:outline-none focus:ring-1 focus:ring-blue-500 transition-colors text-center tracking-[0.3em]`} />
                     </>
                 );
             case 'forgot':
@@ -903,7 +903,7 @@ const Auth: React.FC<AuthProps> = ({ onLoginSuccess, theme, toggleTheme }) => {
                 return (
                     <>
                         <p className={`text-sm text-center ${mutedTextColor}`}>Um código foi enviado para <strong>{email}</strong>. Insira-o abaixo.</p>
-                        <input type="text" placeholder="código de 6 dÃ­gitos" value={code} onChange={e => setCode(e.target.value)} required className={`w-full px-3 py-3 ${inputBg} border ${inputBorder} ${inputTextColor} rounded-lg focus:outline-none focus:ring-1 focus:ring-blue-500 transition-colors text-center tracking-[0.3em]`} />
+                        <input type="text" placeholder="código de 6 dígitos" value={code} onChange={e => setCode(e.target.value)} required className={`w-full px-3 py-3 ${inputBg} border ${inputBorder} ${inputTextColor} rounded-lg focus:outline-none focus:ring-1 focus:ring-blue-500 transition-colors text-center tracking-[0.3em]`} />
                         <div className="relative">
                             <LockIcon className={`absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 ${mutedTextColor}`} />
                             <input type={isPasswordVisible ? 'text' : 'password'} placeholder="Nova Senha" value={password} onChange={e => setPassword(e.target.value)} required className={`w-full pl-10 pr-10 py-3 ${inputBg} border ${inputBorder} ${inputTextColor} rounded-lg focus:outline-none focus:ring-1 focus:ring-blue-500 transition-colors`} />
