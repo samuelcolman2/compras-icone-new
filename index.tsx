@@ -721,7 +721,7 @@ const Auth: React.FC<AuthProps> = ({ onLoginSuccess, theme, toggleTheme }) => {
 
     const handleResendVerification = async () => {
         if (!email) {
-            setError("Por favor, informe o e-mail para reenviar o cÃ³digo.");
+            setError("Por favor, informe o e-mail para reenviar o código.");
             return;
         }
         setIsLoading(true);
@@ -729,9 +729,9 @@ const Auth: React.FC<AuthProps> = ({ onLoginSuccess, theme, toggleTheme }) => {
         setMessage(null);
         try {
             await authService.requestVerificationEmail(email);
-            setMessage("Um novo cÃ³digo foi enviado para seu e-mail.");
+            setMessage("Um novo código foi enviado para seu e-mail.");
         } catch (err: any) {
-            setError(err.message || "Falha ao reenviar cÃ³digo.");
+            setError(err.message || "Falha ao reenviar código.");
         } finally {
             setIsLoading(false);
         }
@@ -774,32 +774,32 @@ const Auth: React.FC<AuthProps> = ({ onLoginSuccess, theme, toggleTheme }) => {
                     .join(' ');
 
                 await authService.signUp(email, password, formattedFullName);
-                setMessage("Conta criada com sucesso! Verifique sua caixa de entrada (e spam) para o cÃ³digo de confirmação.");
+                setMessage("Conta criada com sucesso! Verifique sua caixa de entrada (e spam) para o código de confirmação.");
                 setView('verify');
 
             } else if (view === 'verify') {
                 const response = await authService.confirmVerification(email, code);
                 if (response.ok) {
-                    setMessage("E-mail verificado com sucesso! Agora vocÃª pode fazer o login.");
+                    setMessage("E-mail verificado com sucesso! Agora você pode fazer o login.");
                     setCode('');
                     setView('login');
                 } else {
-                    throw new Error(response.msg || "Falha ao verificar o cÃ³digo.");
+                    throw new Error(response.msg || "Falha ao verificar o código.");
                 }
 
             } else if (view === 'forgot') {
                 const response = await authService.requestPasswordReset(email);
                 if (response.ok) {
-                    setMessage("CÃ³digo de redefiniÃ§Ã£o enviado! Verifique seu e-mail.");
+                    setMessage("código de redefinição enviado! Verifique seu e-mail.");
                     setView('reset');
                 } else {
-                    throw new Error(response.msg || "Falha ao solicitar redefiniÃ§Ã£o de senha.");
+                    throw new Error(response.msg || "Falha ao solicitar redefinição de senha.");
                 }
             } else if (view === 'reset') {
                 if (password.length < 6) throw new Error("A nova senha deve ter pelo menos 6 caracteres.");
                 const response = await authService.confirmPasswordReset(email, code, password);
                 if (response.ok) {
-                    setMessage("Senha redefinida com sucesso! VocÃª jÃ¡ pode fazer login.");
+                    setMessage("Senha redefinida com sucesso! você já pode fazer login.");
                     setPassword('');
                     setCode('');
                     setView('login');
@@ -888,8 +888,8 @@ const Auth: React.FC<AuthProps> = ({ onLoginSuccess, theme, toggleTheme }) => {
             case 'verify':
                 return (
                     <>
-                        <p className={`text-sm text-center ${mutedTextColor}`}>Um cÃ³digo foi enviado para <strong>{email}</strong>. Insira-o abaixo para ativar sua conta.</p>
-                        <input type="text" placeholder="CÃ³digo de 6 dÃ­gitos" value={code} onChange={e => setCode(e.target.value)} required className={`w-full px-3 py-3 ${inputBg} border ${inputBorder} ${inputTextColor} rounded-lg focus:outline-none focus:ring-1 focus:ring-blue-500 transition-colors text-center tracking-[0.3em]`} />
+                        <p className={`text-sm text-center ${mutedTextColor}`}>Um código foi enviado para <strong>{email}</strong>. Insira-o abaixo para ativar sua conta.</p>
+                        <input type="text" placeholder="código de 6 dÃ­gitos" value={code} onChange={e => setCode(e.target.value)} required className={`w-full px-3 py-3 ${inputBg} border ${inputBorder} ${inputTextColor} rounded-lg focus:outline-none focus:ring-1 focus:ring-blue-500 transition-colors text-center tracking-[0.3em]`} />
                     </>
                 );
             case 'forgot':
@@ -902,8 +902,8 @@ const Auth: React.FC<AuthProps> = ({ onLoginSuccess, theme, toggleTheme }) => {
             case 'reset':
                 return (
                     <>
-                        <p className={`text-sm text-center ${mutedTextColor}`}>Um cÃ³digo foi enviado para <strong>{email}</strong>. Insira-o abaixo.</p>
-                        <input type="text" placeholder="CÃ³digo de 6 dÃ­gitos" value={code} onChange={e => setCode(e.target.value)} required className={`w-full px-3 py-3 ${inputBg} border ${inputBorder} ${inputTextColor} rounded-lg focus:outline-none focus:ring-1 focus:ring-blue-500 transition-colors text-center tracking-[0.3em]`} />
+                        <p className={`text-sm text-center ${mutedTextColor}`}>Um código foi enviado para <strong>{email}</strong>. Insira-o abaixo.</p>
+                        <input type="text" placeholder="código de 6 dÃ­gitos" value={code} onChange={e => setCode(e.target.value)} required className={`w-full px-3 py-3 ${inputBg} border ${inputBorder} ${inputTextColor} rounded-lg focus:outline-none focus:ring-1 focus:ring-blue-500 transition-colors text-center tracking-[0.3em]`} />
                         <div className="relative">
                             <LockIcon className={`absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 ${mutedTextColor}`} />
                             <input type={isPasswordVisible ? 'text' : 'password'} placeholder="Nova Senha" value={password} onChange={e => setPassword(e.target.value)} required className={`w-full pl-10 pr-10 py-3 ${inputBg} border ${inputBorder} ${inputTextColor} rounded-lg focus:outline-none focus:ring-1 focus:ring-blue-500 transition-colors`} />
@@ -924,7 +924,7 @@ const Auth: React.FC<AuthProps> = ({ onLoginSuccess, theme, toggleTheme }) => {
     const getTitle = () => {
         switch (view) {
             case 'login': return 'Bem-vindo';
-            case 'signup': return signupStep === 'name' ? 'Crie sua Conta' : 'Quase lÃ¡!';
+            case 'signup': return signupStep === 'name' ? 'Crie sua Conta' : 'Quase lá!';
             case 'forgot': return 'Recuperar Senha';
             case 'reset': return 'Redefinir Senha';
             case 'verify': return 'Verifique seu E-mail';
@@ -961,7 +961,7 @@ const Auth: React.FC<AuthProps> = ({ onLoginSuccess, theme, toggleTheme }) => {
                         {view === 'login' && 'Acesse sua conta para continuar.'}
                         {view === 'signup' && (signupStep === 'name' ? 'Primeiro, insira seu nome completo.' : 'Agora, seu e-mail e uma senha segura.')}
                         {view === 'verify' && 'O Ãºltimo passo para ativar sua conta.'}
-                        {view === 'forgot' && 'Insira seu e-mail para receber o cÃ³digo.'}
+                        {view === 'forgot' && 'Insira seu e-mail para receber o código.'}
                         {view === 'reset' && 'Crie uma nova senha para sua conta.'}
                     </p>
                 </div>
