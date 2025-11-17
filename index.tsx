@@ -60,7 +60,7 @@ const authService = {
 
         const existingUserRes = await fetch(FIREBASE_URL + userPath);
         if (existingUserRes.ok && await existingUserRes.json()) {
-            throw new Error('Este e-mail jÃ¡ estÃ¡ em uso.');
+            throw new Error('Este e-mail já está em uso.');
         }
 
         const passwordHash = await sha256(password);
@@ -461,7 +461,7 @@ const formatDate = (dateString: string | undefined, includeTime = false) => {
                 const [year, month, day] = parts;
                 return `${day}/${month}/${year}`;
             }
-            return 'Data invÃ¡lida';
+            return 'Data inválida';
         }
         const options: Intl.DateTimeFormatOptions = {
             day: '2-digit', month: '2-digit', year: 'numeric'
@@ -472,7 +472,7 @@ const formatDate = (dateString: string | undefined, includeTime = false) => {
         }
         return date.toLocaleString('pt-BR', options);
     } catch (e) {
-        return 'Data invÃ¡lida'
+        return 'Data inválida'
     }
 };
 
@@ -487,7 +487,7 @@ const formatCurrency = (value: number | string | undefined | null) => {
         numberValue = value;
     }
 
-    if (isNaN(numberValue)) return 'Valor invÃ¡lido';
+    if (isNaN(numberValue)) return 'Valor inválido';
 
     return new Intl.NumberFormat('pt-BR', {
         style: 'currency',
@@ -546,7 +546,7 @@ const compressPdfToJpegArray = async (
                     const dataUrl = canvas.toDataURL('image/jpeg', quality);
                     const base64 = dataUrl.split(',')[1];
                     if (!base64) {
-                        return reject(new Error("Falha ao converter a pÃ¡gina do PDF em imagem."));
+                        return reject(new Error("Falha ao converter a página do PDF em imagem."));
                     }
                     images.push(base64);
                 }
@@ -1009,9 +1009,9 @@ const Auth: React.FC<AuthProps> = ({ onLoginSuccess, theme, toggleTheme }) => {
                                 </p>
                             )}
                             <p className={`${buttonTextColor}`}>
-                                JÃ¡ tem uma conta?{' '}
+                                Já tem uma conta?{' '}
                                 <button onClick={() => { setView('login'); setError(null); }} className="font-semibold text-blue-400 hover:text-blue-300">
-                                    FaÃ§a login
+                                    Faça login
                                 </button>
                             </p>
                         </>
