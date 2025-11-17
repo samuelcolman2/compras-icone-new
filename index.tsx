@@ -35,6 +35,7 @@ export interface User {
     isVerified: boolean;
     createdAt: number;
     role?: 'admin' | 'user' | 'comprador' | 'aprovador';
+    isDisabled?: boolean;
 }
 
 type ApproverContact = {
@@ -72,6 +73,7 @@ const authService = {
             createdAt: Date.now(),
             uid: sanitizedEmail,
             role: 'user',
+            isDisabled: false,
         };
 
         const response = await fetch(FIREBASE_URL + userPath, {
@@ -96,6 +98,7 @@ const authService = {
         const passwordHash = await sha256(password);
         if (user.passwordHash !== passwordHash) throw new Error('E-mail ou senha incorretos.');
         if (!user.isVerified) throw new Error('Seu e-mail ainda não foi verificado. Por favor, verifique sua caixa de entrada.');
+        if (user.isDisabled) throw new Error('Sua conta foi desativada. Entre em contato com o administrador.');
 
         if (!user.role) {
             user.role = 'user';
@@ -111,7 +114,8 @@ const authService = {
             displayName: user.displayName,
             isVerified: user.isVerified,
             createdAt: user.createdAt,
-            role: user.role
+            role: user.role,
+            isDisabled: Boolean(user.isDisabled),
         };
     },
     _callAppsScript: async (action: string, params: Record<string, string>) => {
@@ -184,6 +188,7 @@ const authService = {
                 return {
                     ...user,
                     role: user.role || 'user',
+                    isDisabled: Boolean(user.isDisabled),
                     photoUrl,
                 };
             })
@@ -229,6 +234,17 @@ const authService = {
 
         if (!response.ok) {
             throw new Error('Falha ao atualizar a permissÃ£o do usuário.');
+        }
+    },
+    updateUserStatus: async (uid: string, isDisabled: boolean) => {
+        const userPath = `/users/${uid}.json`;
+        const response = await fetch(FIREBASE_URL + userPath, {
+            method: 'PATCH',
+            body: JSON.stringify({ isDisabled }),
+        });
+
+        if (!response.ok) {
+            throw new Error('Falha ao atualizar o status do usuário.');
         }
     },
 };
@@ -2567,10 +2583,20 @@ const KpiDetailsModal: React.FC<KpiDetailsModalProps> = ({ isOpen, onClose, titl
 // ADMIN & PROFILE & APP COMPONENTS
 // ==========================================================================
 
-const AdminPage = ({ theme }: { theme: 'light' | 'dark' }) => {
+const AdminPage = ({ theme, currentUser }: { theme: 'light' | 'dark'; currentUser: User }) => {
     const [users, setUsers] = useState<(User & { photoUrl: string | null })[]>([]);
     const [isLoading, setIsLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
+    const [permissionUpdating, setPermissionUpdating] = useState<string | null>(null);
+    const [pendingPermissionChange, setPendingPermissionChange] = useState<{ user: User & { photoUrl: string | null }; value: string } | null>(null);
+
+    const roleLabels: Record<string, string> = {
+        user: 'Usuário',
+        comprador: 'Comprador',
+        aprovador: 'Aprovador',
+        admin: 'Admin',
+        disabled: 'Desativado',
+    };
 
     const fetchUsers = async () => {
         setIsLoading(true);
@@ -2588,58 +2614,166 @@ const AdminPage = ({ theme }: { theme: 'light' | 'dark' }) => {
         fetchUsers();
     }, []);
 
-    const handleRoleChange = async (uid: string, newRole: User['role']) => {
+    const handlePermissionChange = async (user: User & { photoUrl: string | null }, nextValue: string) => {
+        if (user.uid === currentUser.uid) {
+            setPendingPermissionChange(null);
+            return;
+        }
+        const wasDisabled = Boolean(user.isDisabled);
+        const prevUsers = users;
+        setPermissionUpdating(user.uid);
+
+        if (nextValue === 'disabled') {
+            if (wasDisabled) {
+                setPermissionUpdating(null);
+                return;
+            }
+            setUsers(users.map(u => u.uid === user.uid ? { ...u, isDisabled: true } : u));
+            try {
+                await authService.updateUserStatus(user.uid, true);
+            } catch (error) {
+                alert('Falha ao atualizar o status do usuário.');
+                setUsers(prevUsers);
+            } finally {
+                setPermissionUpdating(null);
+            }
+            return;
+        }
+
+        const newRole = nextValue as User['role'];
+        setUsers(users.map(u => u.uid === user.uid ? { ...u, role: newRole, isDisabled: false } : u));
         try {
-            await authService.updateUserRole(uid, newRole);
-            setUsers(users.map(u => u.uid === uid ? { ...u, role: newRole } : u));
+            await authService.updateUserRole(user.uid, newRole);
+            if (wasDisabled) {
+                await authService.updateUserStatus(user.uid, false);
+            }
         } catch (error) {
             alert('Falha ao atualizar a permissão do usuário.');
+            setUsers(prevUsers);
+        } finally {
+            setPermissionUpdating(null);
         }
+    };
+
+    const handlePermissionSelect = (user: User & { photoUrl: string | null }, nextValue: string) => {
+        if (user.uid === currentUser.uid) {
+            alert('Você não pode alterar sua própria permissão.');
+            return;
+        }
+        const currentValue = user.isDisabled ? 'disabled' : user.role || 'user';
+        if (nextValue === currentValue) return;
+        setPendingPermissionChange({ user, value: nextValue });
+    };
+
+    const confirmPendingPermissionChange = async () => {
+        if (!pendingPermissionChange) return;
+        await handlePermissionChange(pendingPermissionChange.user, pendingPermissionChange.value);
+        setPendingPermissionChange(null);
+    };
+
+    const cancelPendingPermissionChange = () => setPendingPermissionChange(null);
+
+    const renderPermissionModal = () => {
+        if (!pendingPermissionChange) return null;
+        const { user, value } = pendingPermissionChange;
+        const isDisabling = value === 'disabled';
+        const roleLabel = roleLabels[value] || 'Permissão';
+        const modalBg = theme === 'dark' ? 'bg-slate-800 ring-1 ring-white/10 text-white' : 'bg-white text-slate-900';
+
+        return (
+            <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4" onClick={cancelPendingPermissionChange}>
+                <div
+                    className={`${modalBg} rounded-2xl shadow-2xl w-full max-w-md p-6`}
+                    onClick={(e) => e.stopPropagation()}
+                >
+                    <h3 className="text-xl font-semibold mb-2">
+                        {isDisabling ? 'Confirmar desativação' : 'Confirmar alteração de permissão'}
+                    </h3>
+                    <p className="text-sm text-gray-500 dark:text-gray-300 mb-4">
+                        Deseja alterar a permissão de <span className="font-semibold">{user.displayName || user.email}</span> para <span className="font-semibold">{roleLabel}</span>?
+                    </p>
+                    {isDisabling && (
+                        <div className="mb-5 rounded-xl border border-red-300/60 bg-red-50/80 dark:border-red-400/40 dark:bg-red-500/10 p-4 text-sm text-red-700 dark:text-red-300">
+                            Ao confirmar, {user.displayName || user.email} perderá o acesso ao sistema até ser reativado por um administrador.
+                        </div>
+                    )}
+                    <div className="flex justify-end gap-3">
+                        <button
+                            className="px-4 py-2 rounded-lg font-semibold border border-slate-500/60 text-slate-600 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700/40 transition-colors"
+                            onClick={cancelPendingPermissionChange}
+                            disabled={permissionUpdating === user.uid}
+                        >
+                            Cancelar
+                        </button>
+                        <button
+                            className={`px-4 py-2 rounded-lg font-semibold text-white ${isDisabling ? 'bg-red-600 hover:bg-red-700' : 'bg-emerald-600 hover:bg-emerald-700'} transition-colors disabled:opacity-60 disabled:cursor-not-allowed`}
+                            onClick={confirmPendingPermissionChange}
+                            disabled={permissionUpdating === user.uid}
+                        >
+                            {permissionUpdating === user.uid ? <Spinner size="small" /> : 'Confirmar'}
+                        </button>
+                    </div>
+                </div>
+            </div>
+        );
     };
 
     if (isLoading) return <div className="w-full flex justify-center items-start pt-16"><Spinner message="Carregando usuários..." /></div>;
     if (error) return <div className="text-red-400 text-center p-4">{error}</div>;
 
     return (
-        <div className="table-container">
-            <div className="page-header"><h1>Painel Administrativo</h1></div>
-            <div className="table-wrapper">
-                <table>
-                    <thead>
-                        <tr>
-                            <th>Usuário</th>
-                            <th>E-mail</th>
-                            <th>Permissão</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        {users.map(user => (
-                            <tr key={user.uid}>
-                                <td>
-                                    <div className="flex items-center gap-3">
-                                        {user.photoUrl ? <img src={user.photoUrl} alt="Avatar" className="w-8 h-8 rounded-full object-cover" /> : <DefaultAvatar className="w-8 h-8 rounded-full" />}
-                                        <span className="font-medium">{user.displayName}</span>
-                                    </div>
-                                </td>
-                                <td>{user.email}</td>
-                                <td>
-                                    <select
-                                        value={user.role}
-                                        onChange={(e) => handleRoleChange(user.uid, e.target.value as User['role'])}
-                                        className="select-field text-sm"
-                                    >
-                                        <option value="user">Usuário</option>
-                                        <option value="comprador">Comprador</option>
-                                        <option value="aprovador">Aprovador</option>
-                                        <option value="admin">Admin</option>
-                                    </select>
-                                </td>
+        <>
+            <div className="table-container">
+                <div className="page-header"><h1>Painel Administrativo</h1></div>
+                <div className="table-wrapper">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Usuário</th>
+                                <th>E-mail</th>
+                                <th>Permissão</th>
                             </tr>
-                        ))}
-                    </tbody>
-                </table>
+                        </thead>
+                        <tbody>
+                            {users.map(user => {
+                                const isDisabled = Boolean(user.isDisabled);
+                                const nameColorClass = isDisabled ? 'text-red-500' : 'text-emerald-600';
+                                const selectValue = isDisabled ? 'disabled' : user.role || 'user';
+                                const selectStateClass = isDisabled ? 'text-red-500 font-semibold' : '';
+                                const isSelf = user.uid === currentUser.uid;
+                                return (
+                                    <tr key={user.uid}>
+                                        <td>
+                                            <div className="flex items-center gap-3">
+                                                {user.photoUrl ? <img src={user.photoUrl} alt="Avatar" className="w-8 h-8 rounded-full object-cover" /> : <DefaultAvatar className="w-8 h-8 rounded-full" />}
+                                                <span className={`font-medium transition-colors ${nameColorClass}`}>{user.displayName}</span>
+                                            </div>
+                                        </td>
+                                        <td>{user.email}</td>
+                                        <td>
+                                            <select
+                                                value={selectValue}
+                                                onChange={(e) => handlePermissionSelect(user, e.target.value)}
+                                                className={`select-field text-sm ${selectStateClass}`}
+                                                disabled={permissionUpdating === user.uid || isSelf}
+                                                title={isSelf ? 'Você não pode alterar a própria permissão.' : undefined}
+                                            >
+                                                <option value="user">Usuário</option>
+                                                <option value="comprador">Comprador</option>
+                                                <option value="aprovador">Aprovador</option>
+                                                <option value="admin">Admin</option>
+                                                <option value="disabled" className="text-red-500 font-semibold">Desativado</option>
+                                            </select>
+                                        </td>
+                                    </tr>
+                                );
+                            })}
+                        </tbody>
+                    </table>
+                </div>
             </div>
-        </div>
+            {renderPermissionModal()}
+        </>
     );
 };
 
@@ -2780,7 +2914,7 @@ const App: React.FC<{ user: User; onLogout: () => void; theme: 'light' | 'dark';
             case 'dashboards':
                 return <DashboardsPage theme={theme} />;
             case 'admin':
-                return <AdminPage theme={theme} />;
+                return <AdminPage theme={theme} currentUser={currentUser} />;
             default:
                 return <PurchaseForm user={currentUser} onFormSubmit={fetchCounts} />;
         }
