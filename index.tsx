@@ -511,6 +511,31 @@ const formatCurrency = (value: number | string | undefined | null) => {
     }).format(numberValue);
 };
 
+const exportRowsToCsv = (rows: Record<string, any>[], filename: string, orderedHeaders?: string[]) => {
+    if (!rows.length) return;
+    const headers = orderedHeaders && orderedHeaders.length ? orderedHeaders : Object.keys(rows[0]);
+    const csvContent = [
+        headers.join(';'),
+        ...rows.map(row =>
+            headers
+                .map(header => {
+                    const value = row[header] ?? '';
+                    const sanitized = String(value).replace(/"/g, '""');
+                    return `"${sanitized}"`;
+                })
+                .join(';')
+        )
+    ].join('\n');
+
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = filename;
+    link.click();
+    URL.revokeObjectURL(url);
+};
+
 // ==========================================================================
 // PDF COMPRESSION UTILITY
 // ==========================================================================
@@ -1415,7 +1440,7 @@ const PurchaseDetailsModal: React.FC<PurchaseDetailsModalProps> = ({ isOpen, onC
                     <DetailItem label="Unidade" value={request.unidade} />
                     <DetailItem label="Data da Solicitação" value={formatDate(request.createdAt, true)} />
                     <DetailItem label="Prazo" value={request.prazo === 'sim' ? formatDate(request.prazoDataHora, true) : 'Não possui'} />
-                    <DetailItem label="UrgÃªncia" value={request.urgencia} />
+                    <DetailItem label="Urgência" value={request.urgencia} />
                     <DetailItem label="Tipo" value={request.tipo} />
                     <DetailItem label="Status" value={<span className={`status-badge status-${request.status}`}>{request.status}</span>} />
                     {request.status === 'reprovado' && <DetailItem label="Justificativa" value={request.justification || 'Não informada'} />}
@@ -1817,8 +1842,23 @@ const PurchaseConfirmationModal: React.FC<PurchaseConfirmationModalProps> = ({ i
     );
 };
 
+const manualEntryInitialData = {
+    unidade: '',
+    urgencia: '',
+    tipo: '',
+    nomeProduto: '',
+    quantidadeProduto: '',
+    descricaoServico: '',
+    valorProduto: '',
+    valorServico: '',
+    previsaoChegada: '',
+    dataRealizacao: '',
+    dataCompra: '',
+    linkProduto: '',
+    observacoes: '',
+};
 
-const SetorComprasPage = ({ theme, onPurchaseConfirmed }: { theme: 'light' | 'dark', onPurchaseConfirmed: () => void }) => {
+const SetorComprasPage = ({ theme, onPurchaseConfirmed, currentUser }: { theme: 'light' | 'dark', onPurchaseConfirmed: () => void, currentUser: User }) => {
     const [requests, setRequests] = useState<any[]>([]);
     const [isLoading, setIsLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
@@ -1826,11 +1866,197 @@ const SetorComprasPage = ({ theme, onPurchaseConfirmed }: { theme: 'light' | 'da
 
     const [selectedRequestForDetails, setSelectedRequestForDetails] = useState<any | null>(null);
     const [selectedRequestForPurchase, setSelectedRequestForPurchase] = useState<any | null>(null);
+    const [isManualModalOpen, setIsManualModalOpen] = useState(false);
+    const [manualFormData, setManualFormData] = useState(manualEntryInitialData);
+    const [manualSubmitting, setManualSubmitting] = useState(false);
+    const [isDownloadModalOpen, setIsDownloadModalOpen] = useState(false);
+    const [isDownloading, setIsDownloading] = useState(false);
 
     const [uploadingId, setUploadingId] = useState<string | null>(null);
     const [viewingId, setViewingId] = useState<string | null>(null);
     const [currentRequestIdForUpload, setCurrentRequestIdForUpload] = useState<string | null>(null);
     const fileInputRef = useRef<HTMLInputElement>(null);
+
+    const formatCurrencyInput = (rawValue: string) => {
+        const numericValue = rawValue.replace(/\D/g, '');
+        if (!numericValue) return '';
+        const amount = parseFloat(numericValue) / 100;
+        return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(amount);
+    };
+
+    const parseCurrencyToNumber = (value: string) => {
+        if (!value) return 0;
+        const normalized = value
+            .replace(/\s/g, '')
+            .replace('R$', '')
+            .replace(/\./g, '')
+            .replace(',', '.');
+        const parsed = parseFloat(normalized);
+        return isNaN(parsed) ? 0 : parsed;
+    };
+
+    const handleManualFieldChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
+        const { name, value } = e.target;
+        setManualFormData(prev => {
+            const next = { ...prev, [name]: value };
+            if (name === 'tipo') {
+                if (value === 'produto') {
+                    next.descricaoServico = '';
+                    next.valorServico = '';
+                    next.dataRealizacao = '';
+                } else if (value === 'servico') {
+                    next.nomeProduto = '';
+                    next.quantidadeProduto = '';
+                    next.valorProduto = '';
+                    next.previsaoChegada = '';
+                    next.linkProduto = '';
+                }
+            }
+            return next;
+        });
+    };
+
+    const handleManualCurrencyChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+        const { name, value } = e.target;
+        setManualFormData(prev => ({ ...prev, [name]: formatCurrencyInput(value) }));
+    };
+
+    const closeManualModal = () => {
+        setIsManualModalOpen(false);
+        setManualFormData(manualEntryInitialData);
+        setManualSubmitting(false);
+    };
+
+    const closeDownloadModal = () => {
+        setIsDownloadModalOpen(false);
+        setIsDownloading(false);
+    };
+
+    const handleManualSubmit = async (e: React.FormEvent) => {
+        e.preventDefault();
+        const errors: string[] = [];
+        if (!manualFormData.unidade) errors.push('Unidade');
+        if (!manualFormData.urgencia) errors.push('Urgência');
+        if (!manualFormData.tipo) errors.push('Tipo');
+        if (!manualFormData.dataCompra) errors.push('Data da Compra');
+
+        if (manualFormData.tipo === 'produto') {
+            if (!manualFormData.nomeProduto) errors.push('Nome do produto');
+            if (!manualFormData.quantidadeProduto) errors.push('Quantidade');
+            if (!manualFormData.valorProduto) errors.push('Valor do produto');
+        } else if (manualFormData.tipo === 'servico') {
+            if (!manualFormData.descricaoServico) errors.push('Descrição do serviço');
+            if (!manualFormData.valorServico) errors.push('Valor do serviço');
+            if (!manualFormData.dataRealizacao) errors.push('Data de realização');
+        }
+
+        if (errors.length > 0) {
+            alert(`Por favor, preencha os campos obrigatórios: ${errors.join(', ')}.`);
+            return;
+        }
+
+        setManualSubmitting(true);
+        try {
+            const payload: any = {
+                nome: currentUser.displayName,
+                email: currentUser.email,
+                requesterUid: currentUser.uid,
+                unidade: manualFormData.unidade,
+                urgencia: manualFormData.urgencia,
+                tipo: manualFormData.tipo,
+                createdAt: new Date().toISOString(),
+                status: 'comprado',
+                purchasedAt: manualFormData.dataCompra ? new Date(manualFormData.dataCompra).toISOString() : new Date().toISOString(),
+                manualEntry: true,
+            };
+
+            if (manualFormData.tipo === 'produto') {
+                payload.nomeProduto = manualFormData.nomeProduto;
+                payload.quantidadeProduto = manualFormData.quantidadeProduto;
+                payload.valorProduto = parseCurrencyToNumber(manualFormData.valorProduto);
+                payload.previsaoChegada = manualFormData.previsaoChegada || '';
+                if (manualFormData.linkProduto) {
+                    payload.linkProduto = manualFormData.linkProduto;
+                }
+            } else {
+                payload.descricaoServico = manualFormData.descricaoServico;
+                payload.valorServico = parseCurrencyToNumber(manualFormData.valorServico);
+                payload.dataRealizacao = manualFormData.dataRealizacao;
+            }
+
+            if (manualFormData.observacoes) {
+                payload.observacoes = manualFormData.observacoes;
+            }
+
+            const response = await databaseService.addPurchaseRequest(payload);
+            const newRequest = { id: response.name, ...payload };
+            setRequests(prev => [newRequest, ...prev]);
+            setActiveTab('historico');
+            closeManualModal();
+            onPurchaseConfirmed();
+        } catch (err) {
+            console.error('Falha ao lançar manualmente a solicitação:', err);
+            alert('Falha ao lançar manualmente a solicitação. Tente novamente.');
+        } finally {
+            setManualSubmitting(false);
+        }
+    };
+
+    const exportHeaders = [
+        'Tipo',
+        'Unidade',
+        'Solicitante',
+        'E-mail',
+        'Item',
+        'Link do produto',
+        'Urgência',
+        'Status',
+        'Data da solicitação',
+        'Data da compra',
+        'Valor final',
+        'Entrada manual?',
+    ];
+
+    const buildRowsForExport = (data: any[]) => data.map(req => ({
+        'Tipo': req.tipo || '—',
+        'Unidade': req.unidade || '—',
+        'Solicitante': req.nome || '—',
+        'E-mail': req.email || '—',
+        'Item': req.nomeProduto || req.descricaoServico || '—',
+        'Link do produto': req.tipo === 'produto' ? (req.linkProduto || '—') : '—',
+        'Urgência': req.urgencia || '—',
+        'Status': req.status || '—',
+        'Data da solicitação': formatDate(req.createdAt, true),
+        'Data da compra': req.purchasedAt ? formatDate(req.purchasedAt, true) : '—',
+        'Valor final': formatCurrency(req.valorProduto || req.valorServico),
+        'Entrada manual?': req.manualEntry ? 'Sim' : 'Não',
+    }));
+
+    const handleDownloadSubmit = (e: React.FormEvent) => {
+        e.preventDefault();
+        setIsDownloading(true);
+        try {
+            if (!requests.length) {
+                alert('Nenhum registro disponível para download.');
+                return;
+            }
+            const sortedData = [...requests].sort((a, b) => {
+                if (a.tipo === b.tipo) return 0;
+                if (a.tipo === 'produto') return -1;
+                if (b.tipo === 'produto') return 1;
+                return a.tipo < b.tipo ? -1 : 1;
+            });
+            const rows = buildRowsForExport(sortedData);
+            const filename = `solicitacoes_todas_${new Date().toISOString().slice(0, 10)}.csv`;
+            exportRowsToCsv(rows, filename, exportHeaders);
+            closeDownloadModal();
+        } catch (error) {
+            console.error('Falha ao exportar solicitações:', error);
+            alert('Não foi possível gerar a planilha. Tente novamente.');
+        } finally {
+            setIsDownloading(false);
+        }
+    };
 
 
     useEffect(() => {
@@ -2006,7 +2232,7 @@ const SetorComprasPage = ({ theme, onPurchaseConfirmed }: { theme: 'light' | 'da
     });
 
     if (isLoading) {
-        return <div className="w-full flex justify-center items-start pt-16"><Spinner message="Carregando solicitaÃ§Ãµes..." /></div>;
+        return <div className="w-full flex justify-center items-start pt-16"><Spinner message="Carregando solicitações..." /></div>;
     }
 
     if (error) {
@@ -2016,8 +2242,16 @@ const SetorComprasPage = ({ theme, onPurchaseConfirmed }: { theme: 'light' | 'da
     return (
         <>
             <div className="table-container">
-                <div className="page-header">
+                <div className="page-header flex items-center justify-between gap-4 flex-wrap">
                     <h1>Setor de Compras</h1>
+                    <div className="flex items-center gap-3">
+                        <button className="action-btn details-btn" onClick={() => setIsDownloadModalOpen(true)}>
+                            Download
+                        </button>
+                        <button className="action-btn comprar-btn" onClick={() => setIsManualModalOpen(true)}>
+                            Lançar manual
+                        </button>
+                    </div>
                 </div>
                 <div className="tabs-container">
                     <button className={`tab-button ${activeTab === 'pendentes' ? 'active' : ''}`} onClick={() => setActiveTab('pendentes')}>
@@ -2054,13 +2288,16 @@ const SetorComprasPage = ({ theme, onPurchaseConfirmed }: { theme: 'light' | 'da
                                         <th>Valor Final</th>
                                         <th>Data da Compra</th>
                                         <th>Nota Fiscal</th>
-                                        <th>AÃ§Ãµes</th>
+                                        <th>Ações</th>
                                     </tr>
                                 )}
                             </thead>
                             <tbody>
-                                {filteredRequests.map(req => (
-                                    <tr key={req.id}>
+                                {filteredRequests.map(req => {
+                                    const isManualEntry = Boolean(req.manualEntry);
+                                    const manualClassName = isManualEntry ? 'text-orange-400' : '';
+                                    return (
+                                        <tr key={req.id} className={manualClassName}>
                                         <td>{req.unidade}</td>
                                         <td>{req.nome}</td>
                                         <td>{req.nomeProduto || req.descricaoServico}</td>
@@ -2132,7 +2369,8 @@ const SetorComprasPage = ({ theme, onPurchaseConfirmed }: { theme: 'light' | 'da
                                             </div>
                                         </td>
                                     </tr>
-                                ))}
+                                    );
+                                })}
                             </tbody>
                         </table>
                     </div>
@@ -2160,6 +2398,141 @@ const SetorComprasPage = ({ theme, onPurchaseConfirmed }: { theme: 'light' | 'da
                 onConfirm={handleConfirmPurchase}
                 theme={theme}
             />
+            {isDownloadModalOpen && (
+                <div className="fixed inset-0 bg-black bg-opacity-70 z-50 flex justify-center items-center p-4" onClick={closeDownloadModal}>
+                    <div
+                        className={`${theme === 'dark' ? 'bg-slate-800 text-white ring-1 ring-white/10' : 'bg-white text-slate-900'} rounded-2xl shadow-2xl w-full max-w-md p-6`}
+                        onClick={e => e.stopPropagation()}
+                    >
+                        <h2 className="text-xl font-semibold mb-2">Download de solicitações</h2>
+                        <p className="text-sm text-gray-400 dark:text-gray-300 mb-4">
+                            Gerar planilha com todas as solicitações disponíveis no histórico.
+                        </p>
+                        <form onSubmit={handleDownloadSubmit}>
+                            <div className="flex justify-end gap-3">
+                                <button
+                                    type="button"
+                                    onClick={closeDownloadModal}
+                                    className="px-5 py-2 rounded-lg font-semibold border border-slate-500/40 text-slate-600 dark:text-slate-200 hover:bg-slate-100 dark:hover(bg-slate-700/40 transition-colors"
+                                    disabled={isDownloading}
+                                >
+                                    Cancelar
+                                </button>
+                                <button
+                                    type="submit"
+                                    className="px-5 py-2 rounded-lg font-semibold text-white bg-blue-600 hover:bg-blue-700 transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
+                                    disabled={isDownloading}
+                                >
+                                    {isDownloading ? <Spinner size="small" /> : 'Baixar planilha'}
+                                </button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            )}
+            {isManualModalOpen && (
+                <div className="fixed inset-0 bg-black bg-opacity-70 z-50 flex justify-center items-center p-4" onClick={closeManualModal}>
+                    <div
+                        className={`${theme === 'dark' ? 'bg-slate-800 text-white ring-1 ring-white/10' : 'bg-white text-slate-900'} rounded-2xl shadow-2xl w-full max-w-2xl p-6`}
+                        onClick={e => e.stopPropagation()}
+                    >
+                        <h2 className="text-xl font-semibold mb-2">Lançar solicitação manual</h2>
+                        <p className="text-sm text-gray-400 dark:text-gray-300 mb-4">
+                            A solicitação será criada no histórico imediatamente. O solicitante será definido como <strong>{currentUser.displayName}</strong>.
+                        </p>
+                        <form onSubmit={handleManualSubmit} className="space-y-4 max-h-[65vh] overflow-y-auto pr-2">
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                <div className="form-group">
+                                    <label htmlFor="manualUnidade">Unidade</label>
+                                    <select id="manualUnidade" name="unidade" className="select-field" value={manualFormData.unidade} onChange={handleManualFieldChange} required>
+                                        <option value="" disabled>Selecione a unidade</option>
+                                        {[1, 2, 3, 4, 5, 6].map(n => (
+                                            <option key={n} value={`Unidade ${n}`}>Unidade {n}</option>
+                                        ))}
+                                    </select>
+                                </div>
+                                <div className="form-group">
+                                    <label htmlFor="manualUrgencia">Grau de urgência</label>
+                                    <select id="manualUrgencia" name="urgencia" className="select-field" value={manualFormData.urgencia} onChange={handleManualFieldChange} required>
+                                        <option value="" disabled>Selecione</option>
+                                        <option value="Baixo">Baixo</option>
+                                        <option value="Médio">Médio</option>
+                                        <option value="Alto">Alto</option>
+                                    </select>
+                                </div>
+                                <div className="form-group">
+                                    <label htmlFor="manualTipo">Tipo</label>
+                                    <select id="manualTipo" name="tipo" className="select-field" value={manualFormData.tipo} onChange={handleManualFieldChange} required>
+                                        <option value="" disabled>Selecione</option>
+                                        <option value="produto">Produto</option>
+                                        <option value="servico">Serviço</option>
+                                    </select>
+                                </div>
+                                <div className="form-group">
+                                    <label htmlFor="manualDataCompra">Data da compra</label>
+                                    <input type="date" id="manualDataCompra" name="dataCompra" className="input-field" value={manualFormData.dataCompra} onChange={handleManualFieldChange} required />
+                                </div>
+                            </div>
+
+                            {manualFormData.tipo === 'produto' && (
+                                <div className="space-y-4">
+                                    <div className="form-group">
+                                        <label htmlFor="manualNomeProduto">Produto (nome)</label>
+                                        <input type="text" id="manualNomeProduto" name="nomeProduto" className="input-field" value={manualFormData.nomeProduto} onChange={handleManualFieldChange} />
+                                    </div>
+                                    <div className="form-group">
+                                        <label htmlFor="manualQuantidadeProduto">Quantidade</label>
+                                        <input type="number" id="manualQuantidadeProduto" name="quantidadeProduto" className="input-field" min="1" value={manualFormData.quantidadeProduto} onChange={handleManualFieldChange} />
+                                    </div>
+                                    <div className="form-group">
+                                        <label htmlFor="manualValorProduto">Valor do produto</label>
+                                        <input type="text" id="manualValorProduto" name="valorProduto" className="input-field" placeholder="R$ 0,00" value={manualFormData.valorProduto} onChange={handleManualCurrencyChange} />
+                                    </div>
+                                    <div className="form-group">
+                                        <label htmlFor="manualPrevisaoChegada">Previsão de chegada</label>
+                                        <input type="date" id="manualPrevisaoChegada" name="previsaoChegada" className="input-field" value={manualFormData.previsaoChegada} onChange={handleManualFieldChange} />
+                                    </div>
+                                    <div className="form-group">
+                                        <label htmlFor="manualLinkProduto">Link de referência (opcional)</label>
+                                        <input type="url" id="manualLinkProduto" name="linkProduto" className="input-field" placeholder="https://..." value={manualFormData.linkProduto} onChange={handleManualFieldChange} />
+                                    </div>
+                                </div>
+                            )}
+
+                            {manualFormData.tipo === 'servico' && (
+                                <div className="space-y-4">
+                                    <div className="form-group">
+                                        <label htmlFor="manualDescricaoServico">Descrição do serviço</label>
+                                        <textarea id="manualDescricaoServico" name="descricaoServico" className="input-field" rows={4} value={manualFormData.descricaoServico} onChange={handleManualFieldChange} />
+                                    </div>
+                                    <div className="form-group">
+                                        <label htmlFor="manualValorServico">Valor do serviço</label>
+                                        <input type="text" id="manualValorServico" name="valorServico" className="input-field" placeholder="R$ 0,00" value={manualFormData.valorServico} onChange={handleManualCurrencyChange} />
+                                    </div>
+                                    <div className="form-group">
+                                        <label htmlFor="manualDataRealizacao">Data de realização</label>
+                                        <input type="date" id="manualDataRealizacao" name="dataRealizacao" className="input-field" value={manualFormData.dataRealizacao} onChange={handleManualFieldChange} />
+                                    </div>
+                                </div>
+                            )}
+
+                            <div className="form-group">
+                                <label htmlFor="manualObservacoes">Observações (opcional)</label>
+                                <textarea id="manualObservacoes" name="observacoes" className="input-field" rows={3} placeholder="Detalhes adicionais" value={manualFormData.observacoes} onChange={handleManualFieldChange} />
+                            </div>
+
+                            <div className="flex justify-end gap-3 pt-2">
+                                <button type="button" onClick={closeManualModal} className="px-5 py-2 rounded-lg font-semibold border border-slate-500/40 text-slate-600 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700/40 transition-colors" disabled={manualSubmitting}>
+                                    Cancelar
+                                </button>
+                                <button type="submit" className="px-5 py-2 rounded-lg font-semibold text-white bg-emerald-600 hover:bg-emerald-700 transition-colors disabled:opacity-60 disabled:cursor-not-allowed" disabled={manualSubmitting}>
+                                    {manualSubmitting ? <Spinner size="small" /> : 'Lançar solicitação'}
+                                </button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            )}
         </>
     );
 };
@@ -2908,7 +3281,7 @@ const App: React.FC<{ user: User; onLogout: () => void; theme: 'light' | 'dark';
             case 'formulario':
                 return <PurchaseForm user={currentUser} onFormSubmit={fetchCounts} />;
             case 'setor_compras':
-                return <SetorComprasPage theme={theme} onPurchaseConfirmed={fetchCounts} />;
+                return <SetorComprasPage theme={theme} onPurchaseConfirmed={fetchCounts} currentUser={currentUser} />;
             case 'aprovar_compras':
                 return <AprovarComprasPage theme={theme} onStatusUpdate={fetchCounts} />;
             case 'dashboards':
