@@ -1219,7 +1219,7 @@ const Sidebar = ({ isCollapsed, onToggle, activeView, setActiveView, user, onLog
 };
 
 const initialFormData = {
-    nome: '', email: '', unidade: '', prazo: 'nao', prazoDataHora: '', urgencia: '', tipo: '',
+    nome: '', email: '', unidade: '', prazo: 'nao', prazoDataHora: '', prazoData: '', prazoHora: '', urgencia: '', tipo: '',
     descricaoServico: '', querIndicar: 'nao', nomeIndicado: '', nomeProduto: '', quantidadeProduto: '',
     querLink: 'nao', linkProduto: ''
 };
@@ -1250,7 +1250,11 @@ const PurchaseForm = ({ user, onFormSubmit }: { user: User, onFormSubmit?: () =>
             }
             if (name === 'querIndicar' && value === 'nao') newState.nomeIndicado = '';
             if (name === 'querLink' && value === 'nao') newState.linkProduto = '';
-            if (name === 'prazo' && value === 'nao') newState.prazoDataHora = '';
+            if (name === 'prazo' && value === 'nao') {
+                newState.prazoDataHora = '';
+                newState.prazoData = '';
+                newState.prazoHora = '';
+            }
             return newState;
         });
     };
@@ -1263,8 +1267,10 @@ const PurchaseForm = ({ user, onFormSubmit }: { user: User, onFormSubmit?: () =>
         if (!formData.urgencia) errors.push('Grau de urgência');
         if (!formData.tipo) errors.push('Tipo');
 
-        if (formData.prazo === 'sim' && !formData.prazoDataHora) {
-            errors.push('Data e Hora do Prazo');
+        if (formData.prazo === 'sim') {
+            if (!formData.prazoData) {
+                errors.push('Data do Prazo');
+            }
         }
 
         if (formData.tipo === 'servico') {
@@ -1293,8 +1299,18 @@ const PurchaseForm = ({ user, onFormSubmit }: { user: User, onFormSubmit?: () =>
         setIsSubmitting(true);
         setSubmitStatus(null);
 
+        let finalPrazoDataHora = '';
+        if (formData.prazo === 'sim' && formData.prazoData) {
+            if (formData.prazoHora) {
+                finalPrazoDataHora = `${formData.prazoData}T${formData.prazoHora}`;
+            } else {
+                finalPrazoDataHora = formData.prazoData;
+            }
+        }
+
         const requestData = {
             ...formData,
+            prazoDataHora: finalPrazoDataHora,
             requesterUid: user.uid,
             createdAt: new Date().toISOString(),
             status: 'pendente',
@@ -1362,8 +1378,27 @@ const PurchaseForm = ({ user, onFormSubmit }: { user: User, onFormSubmit?: () =>
                 </div>
                 {formData.prazo === 'sim' && (
                     <div className="form-group">
-                        <label htmlFor="prazoDataHora">Data e Hora do Prazo</label>
-                        <input type="datetime-local" id="prazoDataHora" name="prazoDataHora" className="input-field" value={formData.prazoDataHora} onChange={handleChange} required={formData.prazo === 'sim'} aria-required={formData.prazo === 'sim'} />
+                        <label htmlFor="prazoData">Data e Hora do Prazo</label>
+                        <div className="flex gap-4">
+                            <input
+                                type="date"
+                                id="prazoData"
+                                name="prazoData"
+                                className="input-field flex-1"
+                                value={formData.prazoData || ''}
+                                onChange={handleChange}
+                                required={formData.prazo === 'sim'}
+                                aria-required={formData.prazo === 'sim'}
+                            />
+                            <input
+                                type="time"
+                                id="prazoHora"
+                                name="prazoHora"
+                                className="input-field w-32"
+                                value={formData.prazoHora || ''}
+                                onChange={handleChange}
+                            />
+                        </div>
                     </div>
                 )}
                 <div className="form-group">
@@ -2298,77 +2333,77 @@ const SetorComprasPage = ({ theme, onPurchaseConfirmed, currentUser }: { theme: 
                                     const manualClassName = isManualEntry ? 'text-orange-400' : '';
                                     return (
                                         <tr key={req.id} className={manualClassName}>
-                                        <td>{req.unidade}</td>
-                                        <td>{req.nome}</td>
-                                        <td>{req.nomeProduto || req.descricaoServico}</td>
-                                        <td>{req.tipo}</td>
-                                        {activeTab === 'pendentes' ? (
-                                            <>
-                                                <td>{req.prazo === 'sim' ? formatDate(req.prazoDataHora) : 'Não possui'}</td>
-                                                <td>{req.urgencia}</td>
-                                            </>
-                                        ) : (
-                                            <>
-                                                <td>{formatCurrency(req.valorProduto || req.valorServico)}</td>
-                                                <td>{formatDate(req.purchasedAt)}</td>
-                                                <td>
-                                                    {uploadingId === req.id ? (
-                                                        <div className="flex justify-center"><Spinner size="small" /></div>
-                                                    ) : req.hasInvoice ? (
+                                            <td>{req.unidade}</td>
+                                            <td>{req.nome}</td>
+                                            <td>{req.nomeProduto || req.descricaoServico}</td>
+                                            <td>{req.tipo}</td>
+                                            {activeTab === 'pendentes' ? (
+                                                <>
+                                                    <td>{req.prazo === 'sim' ? formatDate(req.prazoDataHora) : 'Não possui'}</td>
+                                                    <td>{req.urgencia}</td>
+                                                </>
+                                            ) : (
+                                                <>
+                                                    <td>{formatCurrency(req.valorProduto || req.valorServico)}</td>
+                                                    <td>{formatDate(req.purchasedAt)}</td>
+                                                    <td>
+                                                        {uploadingId === req.id ? (
+                                                            <div className="flex justify-center"><Spinner size="small" /></div>
+                                                        ) : req.hasInvoice ? (
+                                                            <button
+                                                                className="action-btn comprar-btn"
+                                                                onClick={() => handleViewInvoice(req.id)}
+                                                                disabled={viewingId === req.id}
+                                                                style={{ minWidth: '100px' }}
+                                                            >
+                                                                {viewingId === req.id ? <Spinner size="small" /> : 'Visualizar'}
+                                                            </button>
+                                                        ) : (
+                                                            <button
+                                                                className="details-btn icon-btn"
+                                                                title="Anexar Nota Fiscal"
+                                                                onClick={() => handleUploadClick(req.id)}
+                                                            >
+                                                                <UploadIcon className="w-5 h-5" />
+                                                            </button>
+                                                        )}
+                                                    </td>
+                                                </>
+                                            )}
+                                            <td>
+                                                <div className="action-btn-group">
+                                                    <button
+                                                        onClick={() => setSelectedRequestForDetails(req)}
+                                                        className="details-btn icon-btn"
+                                                        aria-label="Ver Detalhes"
+                                                        title="Ver Detalhes"
+                                                    >
+                                                        <svg xmlns="http://www.w3.org/2000/svg" className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                                                            <path strokeLinecap="round" strokeLinejoin="round" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                                                        </svg>
+                                                    </button>
+                                                    {activeTab === 'historico' && (
                                                         <button
-                                                            className="action-btn comprar-btn"
-                                                            onClick={() => handleViewInvoice(req.id)}
-                                                            disabled={viewingId === req.id}
-                                                            style={{ minWidth: '100px' }}
-                                                        >
-                                                            {viewingId === req.id ? <Spinner size="small" /> : 'Visualizar'}
-                                                        </button>
-                                                    ) : (
-                                                        <button
-                                                            className="details-btn icon-btn"
-                                                            title="Anexar Nota Fiscal"
                                                             onClick={() => handleUploadClick(req.id)}
+                                                            className="details-btn icon-btn"
+                                                            aria-label={req.hasInvoice ? 'Atualizar nota fiscal' : 'Enviar nota fiscal'}
+                                                            title={req.hasInvoice ? 'Atualizar Nota Fiscal' : 'Enviar Nota Fiscal'}
+                                                            disabled={uploadingId === req.id}
                                                         >
-                                                            <UploadIcon className="w-5 h-5" />
+                                                            {uploadingId === req.id ? <Spinner size="small" /> : <UploadIcon className="w-5 h-5" />}
                                                         </button>
                                                     )}
-                                                </td>
-                                            </>
-                                        )}
-                                        <td>
-                                            <div className="action-btn-group">
-                                                <button
-                                                    onClick={() => setSelectedRequestForDetails(req)}
-                                                    className="details-btn icon-btn"
-                                                    aria-label="Ver Detalhes"
-                                                    title="Ver Detalhes"
-                                                >
-                                                    <svg xmlns="http://www.w3.org/2000/svg" className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
-                                                        <path strokeLinecap="round" strokeLinejoin="round" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
-                                                    </svg>
-                                                </button>
-                                                {activeTab === 'historico' && (
-                                                    <button
-                                                        onClick={() => handleUploadClick(req.id)}
-                                                        className="details-btn icon-btn"
-                                                        aria-label={req.hasInvoice ? 'Atualizar nota fiscal' : 'Enviar nota fiscal'}
-                                                        title={req.hasInvoice ? 'Atualizar Nota Fiscal' : 'Enviar Nota Fiscal'}
-                                                        disabled={uploadingId === req.id}
-                                                    >
-                                                        {uploadingId === req.id ? <Spinner size="small" /> : <UploadIcon className="w-5 h-5" />}
-                                                    </button>
-                                                )}
-                                                {activeTab === 'pendentes' && (
-                                                    <button
-                                                        onClick={() => setSelectedRequestForPurchase(req)}
-                                                        className="action-btn comprar-btn"
-                                                    >
-                                                        Comprar
-                                                    </button>
-                                                )}
-                                            </div>
-                                        </td>
-                                    </tr>
+                                                    {activeTab === 'pendentes' && (
+                                                        <button
+                                                            onClick={() => setSelectedRequestForPurchase(req)}
+                                                            className="action-btn comprar-btn"
+                                                        >
+                                                            Comprar
+                                                        </button>
+                                                    )}
+                                                </div>
+                                            </td>
+                                        </tr>
                                     );
                                 })}
                             </tbody>
